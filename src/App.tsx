@@ -6,7 +6,6 @@ function App() {
   const [estadoAtual, setEstadoAtual] = useState<string>("Ponto de Partida");
   const [descricaoEstado, setDescricaoEstado] = useState<string>("Início da entrega de encomenda.");
   const [resultado, setResultado] = useState<string>("");
-  const [acoesDisponiveis, setAcoesDisponiveis] = useState<string[]>([]);
   const [comentarios, setComentarios] = useState<string>("");
 
   const estados: Estado[] = [
@@ -15,10 +14,10 @@ function App() {
       descricao: "Você está no centro de distribuição com a encomenda em mãos.",
       transicoes: {
         "Escolher Rota": [
-          { estadoDestino: "Rota 1A", probabilidade: 0.20 }, 
-          { estadoDestino: "Rota 1B", probabilidade: 0.30 },  
-          { estadoDestino: "Rota 2A", probabilidade: 0.35 },  
-          { estadoDestino: "Rota 2B", probabilidade: 0.15 }   
+          { estadoDestino: "Rota 1A", probabilidade: 0.20 },
+          { estadoDestino: "Rota 1B", probabilidade: 0.30 },
+          { estadoDestino: "Rota 2A", probabilidade: 0.35 },
+          { estadoDestino: "Rota 2B", probabilidade: 0.15 }
         ]
       }
     },
@@ -27,8 +26,8 @@ function App() {
       descricao: "Rota montanhosa - Caminho mais curto mas com 40% de chance de neve.",
       transicoes: {
         "Concluir entrega": [
-          { estadoDestino: "Sucesso Rota 1A", probabilidade: 0.6 },  
-          { estadoDestino: "Falha por Neve", probabilidade: 0.4 }    
+          { estadoDestino: "Sucesso Rota 1A", probabilidade: 0.6 },
+          { estadoDestino: "Falha por Neve", probabilidade: 0.4 }
         ]
       }
     },
@@ -37,7 +36,7 @@ function App() {
       descricao: "Rota urbana - Estrada principal com possibilidade de obras (30%).",
       transicoes: {
         "Concluir entrega": [
-          { estadoDestino: "Sucesso Rota 1B", probabilidade: 0.7 }, 
+          { estadoDestino: "Sucesso Rota 1B", probabilidade: 0.7 },
           { estadoDestino: "Falha por Fechamento", probabilidade: 0.3 }
         ]
       }
@@ -47,8 +46,8 @@ function App() {
       descricao: "Rota cênica - Paisagem bonita mas pista molhada (15% risco).",
       transicoes: {
         "Concluir entrega": [
-          { estadoDestino: "Sucesso Rota 2A", probabilidade: 0.85 }, 
-          { estadoDestino: "Falha por Pista Escorregadia", probabilidade: 0.15 } 
+          { estadoDestino: "Sucesso Rota 2A", probabilidade: 0.85 },
+          { estadoDestino: "Falha por Pista Escorregadia", probabilidade: 0.15 }
         ]
       }
     },
@@ -57,8 +56,8 @@ function App() {
       descricao: "Rota expressa - Mais rápida mas com 50% de congestionamento.",
       transicoes: {
         "Concluir entrega": [
-          { estadoDestino: "Sucesso Rota 2B", probabilidade: 0.5 }, 
-          { estadoDestino: "Falha por Tráfego", probabilidade: 0.5 } 
+          { estadoDestino: "Sucesso Rota 2B", probabilidade: 0.5 },
+          { estadoDestino: "Falha por Tráfego", probabilidade: 0.5 }
         ]
       }
     },
@@ -122,81 +121,114 @@ function App() {
 
   const mdp = new ProcessoDeDecisaoMarkov(estados);
 
+  const getAcaoDoEstado = (estado: string): string => {
+    if (estado === "Ponto de Partida") return "Escolher Rota";
+    if (estado.startsWith("Sucesso")) return "Finalizar";
+    if (estado.includes("Falha")) return "Tentar novamente";
+    if (estado.includes("Rota")) return "Concluir entrega";
+    return "";
+  };
+
   const mudarEstado = (acaoEscolhida: string) => {
-    const estadoAtualObj = estados.find(estado => estado.nome === estadoAtual);
-    if (!estadoAtualObj) return;
+    const estadoAtualObj = mdp.getEstado(estadoAtual);
+    if (!estadoAtualObj) {
+      console.error(`Estado atual '${estadoAtual}' não encontrado`);
+      setComentarios("⚠️ Erro: Estado não encontrado. Reiniciando...");
+      setEstadoAtual("Ponto de Partida");
+      return;
+    }
 
-    const novoEstado = mdp.tomarDecisao(estadoAtualObj, acaoEscolhida);
-    const estadoEscolhido = estados.find(estado => estado.nome === novoEstado);
+    try {
+      // Tratamento especial para o estado de sucesso
+      if (estadoAtual.startsWith("Sucesso") && acaoEscolhida === "Finalizar") {
+        setEstadoAtual("Ponto de Partida");
+        setDescricaoEstado("Início da entrega de encomenda.");
+        setResultado("🔄 Processo reiniciado");
+        setComentarios("📦 Centro de Distribuição: Selecione sua próxima rota de entrega.");
+        return;
+      }
 
-    if (estadoEscolhido) {
-      setEstadoAtual(estadoEscolhido.nome);
-      setDescricaoEstado(estadoEscolhido.descricao);
+      const novoEstadoNome = mdp.tomarDecisao(estadoAtualObj, acaoEscolhida);
+      const novoEstadoObj = mdp.getEstado(novoEstadoNome);
 
-      if (novoEstado === "Ponto de Partida") {
+      if (!novoEstadoObj) {
+        console.error(`Estado destino '${novoEstadoNome}' não encontrado`);
+        setComentarios("⚠️ Erro: Próximo estado não encontrado. Reiniciando...");
+        setEstadoAtual("Ponto de Partida");
+        return;
+      }
+
+      setEstadoAtual(novoEstadoObj.nome);
+      setDescricaoEstado(novoEstadoObj.descricao);
+
+      // Atualiza resultado e comentários
+      if (novoEstadoObj.nome === "Ponto de Partida") {
+        setResultado("🔄 Processo reiniciado");
         setComentarios("📦 Centro de Distribuição: Selecione sua próxima rota de entrega.");
       } 
-      else if (novoEstado.includes("Rota")) {
-        const prob = estadoAtualObj.transicoes["Escolher Rota"]?.find(
-          t => t.estadoDestino === novoEstado
-        )?.probabilidade || 0;
+      else if (novoEstadoObj.nome.includes("Rota")) {
+        const transicao = estadoAtualObj.transicoes[acaoEscolhida]?.find(t => t.estadoDestino === novoEstadoObj.nome);
+        const transicaoEntrega = novoEstadoObj.transicoes["Concluir entrega"]?.[0];
         
+        setResultado(`🛣️ Rota ${novoEstadoObj.nome} selecionada`);
         setComentarios(
-          `🛣️ Rota Selecionada: ${estadoEscolhido.nome} (${(prob * 100).toFixed(0)}% chance de ser escolhida). ` +
-          `Taxa de sucesso: ${(estadoEscolhido.transicoes["Concluir entrega"][0].probabilidade * 100).toFixed(0)}%`
+          `Você escolheu: ${novoEstadoObj.descricao}` +
+          (transicao ? ` (Chance inicial: ${Math.round(transicao.probabilidade * 100)}%)` : "") +
+          (transicaoEntrega ? ` - Chance de sucesso: ${Math.round(transicaoEntrega.probabilidade * 100)}%` : "")
         );
       } 
-      else if (novoEstado.startsWith("Sucesso")) {
-        setComentarios("🎉 Entrega concluída! " + estadoEscolhido.descricao);
+      else if (novoEstadoObj.nome.startsWith("Sucesso")) {
+        setResultado("🎉 Entrega concluída com sucesso!");
+        setComentarios(novoEstadoObj.descricao);
       } 
-      else if (novoEstado.includes("Falha")) {
-        setComentarios("⚠️ " + estadoEscolhido.descricao);
+      else if (novoEstadoObj.nome.includes("Falha")) {
+        setResultado("❌ Falha na entrega");
+        setComentarios(novoEstadoObj.descricao);
       }
 
-      if (novoEstado.startsWith("Sucesso")) {
-        setResultado("✅ Missão cumprida!");
-        setAcoesDisponiveis(["Finalizar"]);
-      } 
-      else if (novoEstado.includes("Falha")) {
-        setResultado("❌ Entrega não realizada");
-        setAcoesDisponiveis(["Tentar novamente"]);
-      } 
-      else if (novoEstado.includes("Rota")) {
-        setResultado(`🛣️ Pronto para entregar via ${estadoEscolhido.nome}`);
-        setAcoesDisponiveis(["Concluir entrega"]);
-      }
+    } catch (error) {
+      console.error("Erro na transição:", error);
+      setComentarios("⚠️ Erro inesperado. Reiniciando sistema...");
+      setEstadoAtual("Ponto de Partida");
     }
   };
 
+  // Determina qual ação mostrar com base no estado atual
+  const acaoAtual = getAcaoDoEstado(estadoAtual);
+  const textoBotao = 
+    acaoAtual === "Finalizar" ? "🏁 Finalizar" :
+    acaoAtual === "Tentar novamente" ? "🔄 Tentar Novamente" :
+    acaoAtual === "Escolher Rota" ? "🗺️ Selecionar Rota" :
+    "📦 Concluir Entrega";
+
   return (
     <div className="App">
-      <h1>🚚 Sistema de Entregas Markoviano</h1>
+      <h1>🚚 Sistema de Entregas Inteligente</h1>
       <div className="card">
-        <p><strong>📍 Estado Atual:</strong> {estadoAtual}</p>
-        <p><strong>📝 Detalhes:</strong> {descricaoEstado}</p>
-        <p className="resultado">{resultado}</p>
-
-        <div className="comentario">
-          <strong>💬 Status:</strong> {comentarios}
+        <div className="status">
+          <p><strong>📍 Estado Atual:</strong> {estadoAtual}</p>
+          <p><strong>📝 Situação:</strong> {descricaoEstado}</p>
+        </div>
+        
+        <div className="resultado">
+          {resultado && <p>{resultado}</p>}
+          <p><strong>💬 Detalhes:</strong> {comentarios}</p>
         </div>
 
-        {estadoAtual === "Ponto de Partida" ? (
-          <div>
-            <button onClick={() => mudarEstado("Escolher Rota")}>
-              🗺️ Escolher Rota de Entrega
+        <div className="botoes">
+          {acaoAtual && (
+            <button
+              onClick={() => mudarEstado(acaoAtual)}
+              className={
+                acaoAtual === "Finalizar" ? "btn-sucesso" :
+                acaoAtual === "Tentar novamente" ? "btn-alerta" : 
+                "btn-primario"
+              }
+            >
+              {textoBotao}
             </button>
-          </div>
-        ) : (
-          <div className="acoes">
-            {acoesDisponiveis.map((acao, index) => (
-              <button key={index} onClick={() => mudarEstado(acao)}>
-                {acao.includes("Finalizar") ? "🏁 Finalizar" : 
-                 acao.includes("Tentar") ? "🔄 Tentar novamente" : 
-                 "📦 Concluir entrega"}
-              </button>
-            ))}
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
